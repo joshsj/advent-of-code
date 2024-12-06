@@ -14,6 +14,44 @@ int compare_list_item(const void *a_ptr, const void *b_ptr)
 	return a - b;
 }
 
+void part_1(const int* list_a, const int* list_b)
+{
+
+	int total_distance = 0;
+
+	for (int i = 0; i < LIST_LINE_COUNT; ++i)
+	{
+		int a = list_a[i];
+		int b = list_b[i];
+
+		total_distance += abs(a - b);
+	}
+
+	printf("Part 1 = %d\n", total_distance);
+}
+
+void part_2(const int* list_a, const int* list_b)
+{
+	int similarity = 0;
+
+	for (int i = 0; i < LIST_LINE_COUNT; ++i)
+	{
+		int a = list_a[i];
+
+		for (int j = 0; j < LIST_LINE_COUNT; ++j)
+		{
+			int b = list_b[j];
+
+			if (a == b)
+			{
+				similarity += a;
+			}
+		}
+	}
+
+	printf("Part 2 = %d\n", similarity);
+}
+
 int main()
 {
 	FILE* file = fopen("input.txt", "r");
@@ -41,17 +79,8 @@ int main()
 	qsort(list_a, LIST_LINE_COUNT, sizeof(int), compare_list_item);
 	qsort(list_b, LIST_LINE_COUNT, sizeof(int), compare_list_item);
 
-	int total_distance = 0;
-
-	for (int i = 0; i < LIST_LINE_COUNT; ++i)
-	{
-		int a = list_a[i];
-		int b = list_b[i];
-
-		total_distance += abs(a - b);
-	}
-
-	printf("Part 1 = %d\n", total_distance);
+	part_1(list_a, list_b);
+	part_2(list_a, list_b);
 
 	free(list_b);
 	free(list_a);
