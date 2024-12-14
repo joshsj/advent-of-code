@@ -1,0 +1,6 @@
+Find an 'm'
+
+Read the next 4 expecting 'ov('
+On good char, advance
+On 'm', seek back 1 and back to start
+On bad char, back to start
