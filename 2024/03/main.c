@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <stdbool.h>
+#include <stdlib.h>
 
 typedef struct FGetLResult
 {
@@ -8,13 +9,30 @@ typedef struct FGetLResult
 	long value_len;
 } FGetLResult;
 
-typedef struct ParseMulResult
+typedef struct ParseResult
 {
 	bool parsed;
-	bool parsed_len;
+	int parsed_len;
+	void* operands;
+} ParseResult;
+
+typedef struct ParseMulOperands
+{
 	int a;
 	int b;
-} ParseMulResult;
+} ParseMulOperands;
+
+typedef struct State
+{
+	bool mul_enabled;
+	long mul_sum;
+} State;
+
+typedef struct Instruction
+{
+	void (*parse)(FILE* file, ParseResult* parse_result);
+	void (*execute)(State* state, const ParseResult* parse_result);
+} Instruction;
 
 bool fmatch(FILE* file, const char* seq, const int seq_len)
 {
@@ -135,97 +153,117 @@ void fgetl_test()
 	fclose(file);
 }
 
-void part_1(FILE* file)
+void parse_mul(FILE* file, ParseResult* parse_result)
 {
-	long sum = 0;
-
-	while (!feof(file))
-	{
-		bool match = fmatch(file, "mul(", 4);
-
-		if (!match) 
-		{
-			int curr = fgetc(file);
-
-			if (curr == 'm')
-			{
-				ungetc(curr, file);
-			}
-
-			continue;
-		}
-
-		int a = fgetl(file).value;
-
-		if (fgetc(file) != ',')
-		{
-			continue;
-		}
-
-		int b = fgetl(file).value;
-
-		if (fgetc(file) != ')')
-		{
-			continue;
-		}
-
-		sum += a * b;
-	}
-
-	printf("Part 1 = %ld\n", sum);
-}
-
-ParseMulResult parse_mul(FILE* file)
-{
-	ParseMulResult result = { .parsed = false, .parsed_len = 0, .a = 0, .b = 0 };
-
 	bool match = fmatch(file, "mul(", 4);
 
 	if (!match) 
 	{
-		return result;
+		return;
 	}
 
 	FGetLResult a = fgetl(file);
 
 	if (!a.value_len)
 	{
-		return result;
+		return;
 	}
 
 	if (fgetc(file) != ',')
 	{
-		return result;
+		return;
 	}
 
 	FGetLResult b = fgetl(file);
 
 	if (!b.value_len)
 	{
-		return result;
+		return;
 	}
 
 	if (fgetc(file) != ')')
 	{
-		return result;
+		return;
 	}
 
-	result.parsed = true;
-	result.parsed_len = 6 + a.value_len + b.value_len;
-	result.a = a.value;
-	result.b = b.value;
+	parse_result->parsed = true;
+	parse_result->parsed_len = 6 + a.value_len + b.value_len;
 
-	return result;
+	ParseMulOperands* operands = malloc(sizeof(ParseMulOperands));
+
+	operands->a = a.value;
+	operands->b = b.value;
+
+	parse_result->operands = operands;
 }
 
-void part_2(FILE* file)
+void mul(State* state, const ParseResult* result) 
 {
-	int c;
+	assert(result->operands != NULL);
+
+	if (state->mul_enabled)
+	{
+		ParseMulOperands operands = *(ParseMulOperands*)result->operands;
+
+		state->mul_sum += operands.a * operands.b;
+	}
+}
+
+Instruction create_mul()
+{
+	return (Instruction) { .parse = &parse_mul, .execute = &mul };
+}
+
+void parse_do(FILE* file, ParseResult* parse_result)
+{
+	if (fmatch(file, "do()", 4)) 
+	{
+		parse_result->parsed = true;
+		parse_result->parsed_len = 4;
+	}
+}
+
+void do_(State* state, const ParseResult* result)
+{
+	state->mul_enabled = true;
+}
+
+Instruction create_do()
+{
+	return (Instruction) { .parse = &parse_do, .execute = &do_ };
+}
+
+void parse_dont(FILE* file, ParseResult* parse_result)
+{
+	if (fmatch(file, "don't()", 7)) 
+	{
+		parse_result->parsed = true;
+		parse_result->parsed_len = 7;
+	}
+}
+
+void dont(State* state, const ParseResult* result)
+{
+	state->mul_enabled = false;
+}
+
+Instruction create_dont()
+{
+	return (Instruction) { .parse = &parse_dont, .execute = &dont };
+}
+
+long run(const Instruction* instructions, const int instructions_len)
+{
+	FILE* file = fopen("input.txt", "r");
+	assert(file);
+
+	State state = { .mul_enabled = true, .mul_sum = 0 };
+	ParseResult* parse_result = malloc(sizeof(ParseResult));
+
+	int c = -EOF;
+	
 	long file_pos;
 	int move_by;
-
-	bool mul_enabled = true;
-	long mul_sum = 0;
 
 	while (c != EOF)
 	{
@@ -235,43 +273,52 @@ void part_2(FILE* file)
 		c = fgetc(file);
 		ungetc(c, file);
 
-		if (c == 'm')
+		for (int i = 0; i < instructions_len; ++i)
 		{
-			ParseMulResult result = parse_mul(file);
+			fseek(file, file_pos, SEEK_SET);
 
-			if (result.parsed)
-			{
-				move_by = result.parsed_len;
+			parse_result->parsed = false;
+			parse_result->parsed_len = 0;
+			parse_result->operands = NULL;
 
-				if (mul_enabled)
-				{
-					mul_sum += result.a * result.b;
-				}
-			}
-		}
-		else if (c == 'd')
-		{
-			if (fmatch(file, "do()", 4))
-			{
-				mul_enabled = true;
-				move_by = 4;
-			}
-			else 
-			{
-				fseek(file, file_pos, SEEK_SET);
+			Instruction instruction = instructions[i];
 
-				if (fmatch(file, "don't()", 7))
-				{
-					mul_enabled = false;
-					move_by = 7;
-				}
+			instruction.parse(file, parse_result);
+
+			if (parse_result->parsed)
+			{
+				instruction.execute(&state, parse_result);
+				move_by = parse_result->parsed_len;
+				free(parse_result->operands);
+				break;
 			}
 		}
 
 		fseek(file, file_pos + (move_by || 1), SEEK_SET);
 	}
+	
+	free(parse_result);
+	fclose(file);
 
-	printf("Part 2 = %ld\n", mul_sum);
+	return state.mul_sum;
+}
+
+void part_1()
+{
+	Instruction instructions[] = { create_mul() };
+
+	long sum = run(instructions, 1);
+
+	printf("Part 1 = %ld\n", sum);
+}
+
+void part_2()
+{
+	Instruction instructions[] = { create_do(), create_mul(), create_dont(), };
+
+	long sum = run(instructions, 3);
+
+	printf("Part 2 = %ld\n", sum);
 }
 
 int main()
@@ -279,17 +326,8 @@ int main()
 	fmatch_test();
 	fgetl_test();
 
-	FILE* file = fopen("input.txt", "r");
-
-	assert(file);
-
-	part_1(file);
-
-	fseek(file, 0, SEEK_SET);
-
-	part_2(file);
-
-	fclose(file);
+	part_1();
+	part_2();
 
 	return 0;
 }
